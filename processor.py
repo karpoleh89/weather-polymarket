@@ -108,6 +108,9 @@ def _compute_day(day_df: pd.DataFrame, target: date, weights: dict) -> dict:
     skew_f   = float(_weighted_skew(f_vals, w_vals, mean_f, sd_f))
     mode_f   = float(stats.mode(np.array([tmax_int[col] for col in tmax_raw]), keepdims=True).mode[0])
 
+   cs = confidence_score_with_bonus(sd_f, skew_f, mean_f, mode_f)
+    vd = verdict_label(sd_f, skew_f)
+
     return dict(
         date      = target,
         probs_c   = probs_c,
@@ -120,6 +123,8 @@ def _compute_day(day_df: pd.DataFrame, target: date, weights: dict) -> dict:
         sigma1_hi = round(mean_f + sd_f, 1),
         sigma2_lo = round(mean_f - 2 * sd_f, 1),
         sigma2_hi = round(mean_f + 2 * sd_f, 1),
+        confidence = cs,
+        verdict    = vd,
     )
 
 
