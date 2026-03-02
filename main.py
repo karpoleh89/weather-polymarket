@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging
 import sys
 
@@ -13,13 +14,22 @@ def main():
     try:
         from collector import fetch_ensemble
         from processor import process
-        from notifier import send_report
+        from notifier  import send_report
+        from observer  import get_actual_tmax_yesterday
 
         logger.info("=== Weather Polymarket Bot START ===")
 
+        # Шаг 1: Сбор данных
         df = fetch_ensemble()
+
+        # Шаг 2: Обработка
         results = process(df)
-        send_report(results)
+
+        # Шаг 2б: Фактическое наблюдение вчера
+        actual_yesterday = get_actual_tmax_yesterday()
+
+        # Шаг 3: Отправка
+        send_report(results, actual_yesterday)
 
         logger.info("=== Weather Polymarket Bot DONE ===")
 
