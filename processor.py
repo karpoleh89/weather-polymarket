@@ -77,9 +77,16 @@ def _weighted_skew(values: np.ndarray, weights: np.ndarray, mean: float, sd: flo
 
 
 def _compute_day(day_df: pd.DataFrame, target: date, weights: dict) -> dict:
+    # Официальный Tmax = максимум за дневные часы 06:00-21:00 GMT
+    # именно так считает метеостанция London City Airport
+    day_hours = day_df.between_time("06:00", "21:00")
+    if day_hours.empty:
+        logger.warning("No daytime hours for %s, falling back to full day", target)
+        day_hours = day_df
+
     tmax_raw = {}
-    for col in day_df.columns:
-        s = day_df[col].dropna()
+    for col in day_hours.columns:
+        s = day_hours[col].dropna()
         if not s.empty:
             tmax_raw[col] = s.max()
 
