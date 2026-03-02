@@ -9,14 +9,27 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
 
 
-def send_report(results: list) -> None:
-    text = _format_message(results)
+def send_report(results: list, actual_yesterday: dict | None = None) -> None:
+    text = _format_message(results, actual_yesterday)
     logger.info("Sending message to Telegram...")
     _send(text)
 
 
-def _format_message(results: list) -> str:
+def _format_message(results: list, actual_yesterday: dict | None) -> str:
     parts = []
+
+    # Блок фактического наблюдения вчера
+    if actual_yesterday:
+        d = actual_yesterday["date"].strftime("%d.%m.%Y")
+        c = actual_yesterday["tmax_c"]
+        f = actual_yesterday["tmax_f"]
+        marker = " (Узко)" if c % 5 == 0 else ""
+        parts.append(
+            f"\U0001f4cd *Факт вчера ({d}):*\n"
+            f"Tmax = {c}\u00b0C / {_fmt(f)}\u00b0F{marker}"
+        )
+
+    # Блоки прогноза по дням
     for r in results:
         d = r["date"].strftime("%d.%m.%Y")
         block = [
@@ -71,3 +84,18 @@ def _send(text: str) -> None:
     except requests.RequestException as e:
         logger.error("Failed to send Telegram message: %s", e)
         raise
+```
+
+---
+
+Сообщение теперь будет выглядеть так:
+```
+📍 Факт вчера (02.03.2026):
+Tmax = 11°C / 51.8°F
+
+📅 03.03.2026
+Вероятность:
+11°C — вероятность 63% (Широко)
+...
+Confidence Score: 7/10
+Вердикт: 🟡 РИСК (Нужен хедж)
