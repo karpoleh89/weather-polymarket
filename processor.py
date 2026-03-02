@@ -47,3 +47,138 @@ def _build_weights(columns: list) -> dict:
                 continue
             per_col_weight = group_weight / (n_models * n_cols)
             for col, m in col_to_model.items():
+                if m == model:
+                    weights[col] = per_col_weight
+
+    total = sum(weights.values())
+    if total == 0:
+        raise RuntimeError("Weights sum to zero")
+    weights = {k: v / total for k, v in weights.items()}
+    logger.info("Weights built: %d columns", len(weights))
+    return weights
+
+
+def _f_to_wunder_c(f_val: float) -> int:
+    return int(round((f_val - 32) / 1.8, 0))
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    idx = np.argsort(values)
+    sv, sw = values[idx], weights[idx]
+    cumw = np.cumsum(sw)
+    return float(sv[np.searchsorted(cumw, 0.5)])
+
+
+def _weighted_skew(values: np.ndarray, weights: np.ndarray, mean: float, sd: float) -> float:
+    if sd == 0:
+        return 0.0
+    return float(np.average(((values - mean) / sd) ** 3, weights=weights))
+
+
+def _compute_day(day_df: pd.DataFrame, target: date, weights: dict) -> dict:
+    tmax_raw = {}
+    for col in day_df.columns:
+        s = day_df[col].dropna()
+        if not s.empty:
+            tmax_raw[col] = s.max()
+
+    if not tmax_raw:
+        raise RuntimeError(f"No valid Tmax for {target}")
+
+    tmax_int = {col: round(v) for col, v in tmax_raw.items()}
+    tmax_c   = {col: _f_to_wunder_c(v) for col, v in tmax_int.items()}
+
+    probs_raw = defaultdict(float)
+    for col, c_val in tmax_c.items():
+        probs_raw[c_val] += weights.get(col, 0.0)
+    total_w = sum(probs_raw.values())
+    probs_c = {c: w / total_w for c, w in sorted(probs_raw.items())} if total_w > 0 else {}
+
+    cols_w = [(col, weights.get(col, 0.0)) for col in tmax_raw if col in weights]
+    if not cols_w:
+        raise RuntimeError(f"No weighted columns for {target}")
+
+    f_vals = np.array([tmax_raw[col] for col, _ in cols_w])
+    w_vals = np.array([w for _, w in cols_w])
+    w_vals = w_vals / w_vals.sum()
+
+    mean_f   = float(np.average(f_vals, weights=w_vals))
+    sd_f     = float(np.sqrt(np.average((f_vals - mean_f) ** 2, weights=w_vals)))
+    median_f = float(_weighted_median(f_vals, w_vals))
+    skew_f   = float(_weighted_skew(f_vals, w_vals, mean_f, sd_f))
+    mode_f   = float(stats.mode(np.array([tmax_int[col] for col in tmax_raw]), keepdims=True).mode[0])
+
+    cs = confidence_score_with_bonus(sd_f, skew_f, mean_f, mode_f)
+    vd = verdict_label(sd_f, skew_f)
+
+    return dict(
+        date       = target,
+        probs_c    = probs_c,
+        mean_f     = round(mean_f, 1),
+        mode_f     = mode_f,
+        median_f   = round(median_f, 1),
+        sd_f       = round(sd_f, 1),
+        skew_f     = round(skew_f, 2),
+        sigma1_lo  = round(mean_f - sd_f, 1),
+        sigma1_hi  = round(mean_f + sd_f, 1),
+        sigma2_lo  = round(mean_f - 2 * sd_f, 1),
+        sigma2_hi  = round(mean_f + 2 * sd_f, 1),
+        confidence = cs,
+        verdict    = vd,
+    )
+
+
+def confidence_score(sd: float, skew: float, mean_f: float) -> int:
+    score = 10
+    if sd > 2.5:
+        score -= 6
+    elif sd > 1.5:
+        score -= 3
+    if abs(skew) > 1.0:
+        score -= 2
+    mean_c = _f_to_wunder_c(mean_f)
+    if mean_c % 5 == 0:
+        score -= 2
+    return max(0, min(10, score))
+
+
+def confidence_score_with_bonus(sd: float, skew: float, mean_f: float, mode_f: float) -> int:
+    score = confidence_score(sd, skew, mean_f)
+    mean_c = _f_to_wunder_c(mean_f)
+    mode_c = _f_to_wunder_c(mode_f)
+    if mean_c == mode_c:
+        score += 2
+    return max(0, min(10, score))
+
+
+def verdict_label(sd: float, skew: float) -> str:
+    if sd < 1.1:
+        return "💎 БЕТОН (Входи крупно)"
+    elif sd < 1.8 and abs(skew) < 0.7:
+        return "✅ СИГНАЛ (Стандартный риск)"
+    elif sd > 2.5 or abs(skew) > 1.5:
+        return "⚠️ ЛОТЕРЕЯ (Только копейки)"
+    elif sd >= 1.8:
+        return "🟡 РИСК (Нужен хедж)"
+    else:
+        return "🔍 АНАЛИЗИРУЙ РУКАМИ"
+
+
+def sd_label(sd: float) -> str:
+    if sd < 0.8:      return "БЕТОН"
+    elif sd <= 1.5:   return "Консолидация"
+    elif sd <= 2.5:   return "Умеренный спред"
+    elif sd <= 4.0:   return "Широкий спред"
+    else:             return "Спагетти!!!"
+
+
+def skew_label(skew: float) -> str:
+    if -0.5 <= skew <= 0.5:    return "Симметричное"
+    elif 0.5 < skew <= 1.0:    return "Умеренное справа"
+    elif skew > 1.0:            return "Сильное справа"
+    elif -1.0 <= skew < -0.5:  return "Умеренное слева"
+    else:                       return "Сильное слева"
+
+
+def market_label(c: int) -> str:
+    return "Узко" if c % 5 == 0 else "Широко"
