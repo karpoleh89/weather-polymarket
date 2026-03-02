@@ -24,8 +24,8 @@ def _format_message(results: list, actual_yesterday: dict | None) -> str:
         c = actual_yesterday["tmax_c"]
         f = actual_yesterday["tmax_f"]
         marker = " (Узко)" if c % 5 == 0 else ""
-        parts.append(
-            f"\U0001f4cd *Факт вчера ({d}):*\n"
+       parts.append(
+            f"\U0001f4cc *Факт вчера ({d}):*\n"
             f"Tmax = {c}\u00b0C / {_fmt(f)}\u00b0F{marker}"
         )
 
