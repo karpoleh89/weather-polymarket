@@ -141,3 +141,59 @@ def skew_label(skew: float) -> str:
 
 def market_label(c: int) -> str:
     return "Узко" if c % 5 == 0 else "Широко"
+
+def confidence_score(sd: float, skew: float, mean_f: float) -> int:
+    """
+    Индекс уверенности 0-10.
+    Старт: 10 баллов, вычитаем штрафы, добавляем бонусы.
+    """
+    score = 10
+
+    # Штраф за разброс
+    if sd > 2.5:
+        score -= 6
+    elif sd > 1.5:
+        score -= 3
+
+    # Штраф за асимметрию
+    if abs(skew) > 1.0:
+        score -= 2
+
+    # Штраф за «узкое окно» — если mean в °C кратно 5
+    mean_c = _f_to_wunder_c(mean_f)
+    if mean_c % 5 == 0:
+        score -= 2
+
+    return max(0, min(10, score))
+
+
+def confidence_score_with_bonus(sd: float, skew: float, mean_f: float, mode_f: float) -> int:
+    """
+    То же что confidence_score, но с бонусом за консенсус Mean==Mode.
+    """
+    score = confidence_score(sd, skew, mean_f)
+
+    # Бонус за консенсус: ROUND(mean) °C == ROUND(mode) °C
+    mean_c = _f_to_wunder_c(mean_f)
+    mode_c = _f_to_wunder_c(mode_f)
+    if mean_c == mode_c:
+        score += 2
+
+    return max(0, min(10, score))
+
+
+def verdict_label(sd: float, skew: float) -> str:
+    """
+    Вердикт по логике IFS из Google Sheets.
+    Приоритет сверху вниз.
+    """
+    if sd < 1.1:
+        return "💎 БЕТОН (Входи крупно)"
+    elif sd < 1.8 and abs(skew) < 0.7:
+        return "✅ СИГНАЛ (Стандартный риск)"
+    elif sd > 2.5 or abs(skew) > 1.5:
+        return "⚠️ ЛОТЕРЕЯ (Только копейки)"
+    elif sd >= 1.8:
+        return "🟡 РИСК (Нужен хедж)"
+    else:
+        return "🔍 АНАЛИЗИРУЙ РУКАМИ"
