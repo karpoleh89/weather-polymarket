@@ -41,9 +41,37 @@ def _format_message(results: list) -> str:
         sk_lbl = processor.skew_label(r["skew_f"])
         block.append(f"SKEW(Tmax) = {_fmt(r['skew_f'])} ({sk_lbl})")
 
+        # Confidence Score
+        block.append("")
+        block.append(f"*Confidence Score: {r['confidence']}/10*")
+        block.append(f"Вердикт: {r['verdict']}")
+
         parts.append("\n".join(block))
 
     return "\n\n".join(parts)
+```
+
+---
+
+## Как будет выглядеть сообщение
+```
+📅 03.03.2026
+Вероятность:
+11°C — вероятность 63% (Широко)
+12°C — вероятность 24% (Широко)
+...
+
+Mean(Tmax)=53°F
+Mode(Tmax)=53°F
+Median(Tmax)=52°F
+
+SD(Tmax) = 1.8°F (Умеренный спред)
+68% вероятность = 51.2-54.8°F
+95% вероятность = 49.4-56.6°F
+SKEW(Tmax) = 0.8 (Умеренное справа)
+
+Confidence Score: 7/10
+Вердикт: 🟡 РИСК (Нужен хедж)
 
 
 def _fmt(val: float) -> str:
