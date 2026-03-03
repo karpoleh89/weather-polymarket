@@ -15,20 +15,15 @@ def main():
         from collector import fetch_ensemble
         from processor import process
         from notifier  import send_report
-        from observer  import get_actual_tmax_yesterday
+        from observer  import get_actual_tmax_yesterday, get_current_wind
 
         logger.info("=== Weather Polymarket Bot START ===")
 
-        # Шаг 1: Сбор данных
-        df = fetch_ensemble()
-
-        # Шаг 2: Обработка
-        results = process(df)
-
-        # Шаг 2б: Фактическое наблюдение вчера
+        df               = fetch_ensemble()
+        wind_deg         = get_current_wind()
+        results          = process(df, wind_deg=wind_deg)
         actual_yesterday = get_actual_tmax_yesterday()
 
-        # Шаг 3: Отправка
         send_report(results, actual_yesterday)
 
         logger.info("=== Weather Polymarket Bot DONE ===")
