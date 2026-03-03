@@ -47,6 +47,35 @@ def _format_message(results: list, actual_yesterday=None) -> str:
         block.append("Mode(Tmax)=" + _fmt(r["mode_f"]) + "\u00b0F")
         block.append("Median(Tmax)=" + _fmt(r["median_f"]) + "\u00b0F")
 
+# Tmax по моделям для Bias Collection
+        if r.get("group_tmax"):
+            block.append("")
+            block.append("*Tmax по моделям:*")
+            for model_name, tmax_val in sorted(r["group_tmax"].items()):
+                block.append(model_name + ": " + _fmt(tmax_val) + "\u00b0F")
+```
+
+---
+
+Сообщение будет выглядеть так:
+```
+📅 03.03.2026
+Вероятность:
+11°C — вероятность 63% (Широко)
+...
+
+Mean(Tmax)=53°F
+Mode(Tmax)=52°F
+Median(Tmax)=52°F
+
+Tmax по моделям:
+ECMWF: 52.4°F
+GFS: 55.1°F
+ICON: 53.8°F
+UKMO: 51.2°F
+
+SD(Tmax) = 1.8°F ...
+        
         sd_lbl = processor.sd_label(r["sd_f"])
         block.append("")
         block.append("SD(Tmax) = " + _fmt(r["sd_f"]) + "\u00b0F (" + sd_lbl + ")")
