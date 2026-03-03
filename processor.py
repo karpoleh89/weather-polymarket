@@ -11,27 +11,41 @@ logger = logging.getLogger(__name__)
 
 
 def process(df: pd.DataFrame, wind_deg: float = None) -> list:
-    today    = datetime.now(timezone.utc).date()
-    tomorrow = today + timedelta(days=1)
-    now_utc  = datetime.now(timezone.utc)
-    results  = []
+    now_utc = datetime.now(timezone.utc)
+    today   = now_utc.date()
 
-    for target_date in (today, tomorrow):
-        # Lead time в часах до конца дня
-        target_end = datetime(target_date.year, target_date.month, target_date.day,
-                              21, 0, 0, tzinfo=timezone.utc)
+    # После 17:00 GMT текущий день не прогнозируем
+    if now_utc.hour >= 17:
+        target_dates = [
+            today + timedelta(days=1),
+            today + timedelta(days=2),
+        ]
+        logger.info("After 17:00 GMT — forecasting D+1 and D+2 only")
+    else:
+        target_dates = [
+            today,
+            today + timedelta(days=1),
+            today + timedelta(days=2),
+        ]
+        logger.info("Before 17:00 GMT — forecasting today, D+1 and D+2")
+
+    results = []
+    for target_date in target_dates:
+        target_end = datetime(
+            target_date.year, target_date.month, target_date.day,
+            21, 0, 0, tzinfo=timezone.utc
+        )
         lead_hours = max(0, (target_end - now_utc).total_seconds() / 3600)
-
-        weights = _build_weights(df.columns.tolist(), lead_hours, wind_deg, df)
+        weights    = _build_weights(df.columns.tolist(), lead_hours, wind_deg, df)
 
         day_df = df[df.index.date == target_date]
         if day_df.empty:
             logger.warning("No data for %s", target_date)
             continue
+
         results.append(_compute_day(day_df, target_date, weights, lead_hours))
 
     return results
-
 
 def _build_weights(columns: list, lead_hours: float,
                    wind_deg: float = None, df: pd.DataFrame = None) -> dict:
