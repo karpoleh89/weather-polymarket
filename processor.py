@@ -10,11 +10,11 @@ import config
 logger = logging.getLogger(__name__)
 
 
-def process(df: pd.DataFrame, wind_deg: float = None) -> list:
+def process(df: pd.DataFrame, wind_deg: float = None,
+            cloud_label: str = "unknown") -> list:
     now_utc = datetime.now(timezone.utc)
     today   = now_utc.date()
 
-    # После 17:00 GMT текущий день не прогнозируем
     if now_utc.hour >= 17:
         target_dates = [
             today + timedelta(days=1),
@@ -43,8 +43,8 @@ def process(df: pd.DataFrame, wind_deg: float = None) -> list:
             logger.warning("No data for %s", target_date)
             continue
 
-        results.append(_compute_day(day_df, target_date, weights, lead_hours))
-
+        results.append(_compute_day(day_df, target_date, weights,
+                                    lead_hours, cloud_label))
     return results
 
 def _build_weights(columns: list, lead_hours: float,
@@ -235,7 +235,8 @@ def _apply_bias_correction(tmax_raw: dict, col_to_model: dict,
     return corrected
 
 def _compute_day(day_df: pd.DataFrame, target: date,
-                 weights: dict, lead_hours: float) -> dict:
+                 weights: dict, lead_hours: float,
+                 cloud_label: str = "unknown") -> dict:
     daytime = day_df.between_time("06:00", "21:00")
     if daytime.empty:
         logger.warning("No daytime hours for %s, using full day", target)
@@ -325,6 +326,15 @@ def _compute_day(day_df: pd.DataFrame, target: date,
         group_tmax = group_tmax,
     )
 
+
+# Bias correction по облачности
+    col_to_model_local = {}
+    for col in tmax_raw:
+        for model in config.ENSEMBLE_MODELS:
+            if model in col:
+                col_to_model_local[col] = model
+                break
+    tmax_raw = _apply_bias_correction(tmax_raw, col_to_model_local, cloud_label)
 
 def confidence_score(sd: float, skew: float, mean_f: float) -> int:
     score = 10
