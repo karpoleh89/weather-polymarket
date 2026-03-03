@@ -19,10 +19,10 @@ ENSEMBLE_MODELS = [
 
 # Группы моделей и их суммарный вес
 MODEL_GROUPS = {
-    "ecmwf":  {"models": ["ecmwf_ifs025_ensemble", "ecmwf_aifs025_ensemble"], "weight": 0.4},
-    "gefs":   {"models": ["ncep_gefs_seamless"],                              "weight": 0.3},
-    "icon":   {"models": ["icon_seamless_eps", "icon_d2_eps"],                "weight": 0.2},
-    "ukmo":   {"models": ["ukmo_global_ensemble_20km", "ukmo_uk_ensemble_2km"], "weight": 0.1},
+    "ecmwf": {"models": ["ecmwf_ifs025_ensemble", "ecmwf_aifs025_ensemble"], "weight": 0.4},
+    "gefs":  {"models": ["ncep_gefs_seamless"],                              "weight": 0.1},
+    "icon":  {"models": ["icon_seamless_eps", "icon_d2_eps"],                "weight": 0.2},
+    "ukmo":  {"models": ["ukmo_global_ensemble_20km", "ukmo_uk_ensemble_2km"], "weight": 0.3},
 }
 
 MODEL_SHORT_NAMES = {
