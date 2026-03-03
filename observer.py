@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-observer.py — Фактические наблюдения Tmax с Open-Meteo
-Используем forecast API (не ensemble) — он содержит реальные данные за прошлое
+observer.py — Фактические наблюдения и текущие условия
 """
 
 import logging
@@ -18,23 +17,13 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 
 def get_actual_tmax_yesterday() -> dict | None:
-    """
-    Возвращает фактический Tmax за вчера в °F и °C.
-
-    Returns
-    -------
-    dict с ключами:
-        date      : date вчерашнего дня
-        tmax_f    : float — Tmax °F (06:00-21:00 GMT)
-        tmax_c    : int   — Tmax Wunder °C
-    None если данные недоступны.
-    """
+    """Фактический Tmax за вчера + категория облачности."""
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date()
 
     params = {
         "latitude":         config.LONDON_LAT,
         "longitude":        config.LONDON_LON,
-        "hourly":           "temperature_2m",
+        "hourly":           "temperature_2m,cloud_cover",
         "timezone":         "GMT",
         "past_days":        2,
         "forecast_days":    1,
@@ -46,63 +35,96 @@ def get_actual_tmax_yesterday() -> dict | None:
         r.raise_for_status()
         data = r.json()
     except requests.RequestException as e:
-        logger.error("Failed to fetch actual observations: %s", e)
+        logger.error("Failed to fetch observations: %s", e)
         return None
 
     hourly = data.get("hourly", {})
     times  = hourly.get("time")
     temps  = hourly.get("temperature_2m")
+    clouds = hourly.get("cloud_cover")
 
     if not times or not temps:
-        logger.warning("No observation data in response")
         return None
 
-    # Строим Series с временным индексом
-    idx = pd.to_datetime(times, utc=True)
-    series = pd.Series(temps, index=idx, dtype=float)
+    idx        = pd.to_datetime(times, utc=True)
+    temp_s     = pd.Series(temps, index=idx, dtype=float)
+    cloud_s    = pd.Series(clouds, index=idx, dtype=float) if clouds else None
 
-    # Фильтруем вчерашний день + дневные часы 06:00-21:00
-    yesterday_series = series[series.index.date == yesterday]
-    daytime = yesterday_series.between_time("06:00", "21:00")
+    # Фильтр: вчера + дневные часы
+    mask    = temp_s.index.date == yesterday
+    daytime = temp_s[mask].between_time("06:00", "21:00")
 
     if daytime.empty:
-        logger.warning("No daytime observations for %s", yesterday)
         return None
 
     tmax_f = float(daytime.max())
     tmax_c = int(round((tmax_f - 32) / 1.8, 0))
 
-    logger.info("Actual Tmax yesterday (%s): %.1f°F = %d°C", yesterday, tmax_f, tmax_c)
+    # Средняя облачность за день
+    cloud_label = "unknown"
+    if cloud_s is not None:
+        cloud_day = cloud_s[mask].between_time("06:00", "21:00").dropna()
+        if not cloud_day.empty:
+            mean_cloud = float(cloud_day.mean())
+            cloud_label = _cloud_category(mean_cloud)
+            logger.info("Yesterday cloud cover: %.0f%% -> %s", mean_cloud, cloud_label)
+
+    logger.info("Actual Tmax yesterday (%s): %.1f°F = %d°C [%s]",
+                yesterday, tmax_f, tmax_c, cloud_label)
 
     return dict(
-        date   = yesterday,
-        tmax_f = round(tmax_f, 1),
-        tmax_c = tmax_c,
+        date        = yesterday,
+        tmax_f      = round(tmax_f, 1),
+        tmax_c      = tmax_c,
+        cloud_label = cloud_label,
     )
 
-def get_current_wind() -> float | None:
+
+def get_current_conditions() -> dict:
     """
-    Возвращает текущее направление ветра в градусах (0-360).
-    0/360 = север, 90 = восток, 180 = юг, 270 = запад.
+    Текущий ветер + облачность.
+    Возвращает dict с wind_deg и cloud_label.
     """
     params = {
         "latitude":  config.LONDON_LAT,
         "longitude": config.LONDON_LON,
-        "current":   "wind_direction_10m",
+        "current":   "wind_direction_10m,cloud_cover",
         "timezone":  "GMT",
     }
+    result = {"wind_deg": None, "cloud_label": "unknown", "cloud_pct": None}
+
     try:
-        r = requests.get(
-            "https://api.open-meteo.com/v1/forecast",
-            params=params,
-            timeout=config.REQUEST_TIMEOUT_SEC,
-        )
+        r = requests.get(FORECAST_URL, params=params, timeout=config.REQUEST_TIMEOUT_SEC)
         r.raise_for_status()
-        data = r.json()
-        wind_deg = data.get("current", {}).get("wind_direction_10m")
+        current = r.json().get("current", {})
+
+        wind_deg  = current.get("wind_direction_10m")
+        cloud_pct = current.get("cloud_cover")
+
         if wind_deg is not None:
-            logger.info("Current wind direction: %.0f deg", wind_deg)
-        return float(wind_deg) if wind_deg is not None else None
+            result["wind_deg"] = float(wind_deg)
+            logger.info("Wind: %.0f deg", wind_deg)
+
+        if cloud_pct is not None:
+            result["cloud_pct"]   = float(cloud_pct)
+            result["cloud_label"] = _cloud_category(float(cloud_pct))
+            logger.info("Cloud cover: %.0f%% -> %s", cloud_pct, result["cloud_label"])
+
     except Exception as e:
-        logger.warning("Could not fetch wind data: %s", e)
-        return None
+        logger.warning("Could not fetch current conditions: %s", e)
+
+    return result
+
+
+def _cloud_category(cloud_pct: float) -> str:
+    """
+    0-30%  -> clear    (ясно — радиационный прогрев)
+    31-70% -> mixed    (переменная облачность)
+    71-100%-> overcast (пасмурно — адвективный прогрев)
+    """
+    if cloud_pct <= 30:
+        return "clear"
+    elif cloud_pct <= 70:
+        return "mixed"
+    else:
+        return "overcast"
