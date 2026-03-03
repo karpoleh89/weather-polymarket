@@ -79,3 +79,30 @@ def get_actual_tmax_yesterday() -> dict | None:
         tmax_f = round(tmax_f, 1),
         tmax_c = tmax_c,
     )
+
+def get_current_wind() -> float | None:
+    """
+    Возвращает текущее направление ветра в градусах (0-360).
+    0/360 = север, 90 = восток, 180 = юг, 270 = запад.
+    """
+    params = {
+        "latitude":  config.LONDON_LAT,
+        "longitude": config.LONDON_LON,
+        "current":   "wind_direction_10m",
+        "timezone":  "GMT",
+    }
+    try:
+        r = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params=params,
+            timeout=config.REQUEST_TIMEOUT_SEC,
+        )
+        r.raise_for_status()
+        data = r.json()
+        wind_deg = data.get("current", {}).get("wind_direction_10m")
+        if wind_deg is not None:
+            logger.info("Current wind direction: %.0f deg", wind_deg)
+        return float(wind_deg) if wind_deg is not None else None
+    except Exception as e:
+        logger.warning("Could not fetch wind data: %s", e)
+        return None
