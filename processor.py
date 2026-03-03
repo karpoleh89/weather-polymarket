@@ -279,6 +279,7 @@ def _compute_day(day_df: pd.DataFrame, target: date,
         confidence = cs,
         verdict    = vd,
         lead_hours = round(lead_hours, 1),
+        group_tmax = group_tmax,
     )
 
 
