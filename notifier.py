@@ -9,25 +9,52 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API = "https://api.telegram.org/bot" + config.TELEGRAM_BOT_TOKEN + "/sendMessage"
 
 
-def send_report(results: list, actual_yesterday=None) -> None:
-    text = _format_message(results, actual_yesterday)
+def send_report(results: list, actual_yesterday=None, conditions=None) -> None:
+    text = _format_message(results, actual_yesterday, conditions)
     logger.info("Sending message to Telegram...")
     _send(text)
 
 
-def _format_message(results: list, actual_yesterday=None) -> str:
+def _format_message(results: list, actual_yesterday=None, conditions=None) -> str:
     parts = []
 
-    if actual_yesterday:
-        d = actual_yesterday["date"].strftime("%d.%m.%Y")
-        c = actual_yesterday["tmax_c"]
-        f = actual_yesterday["tmax_f"]
-        marker = " (Узко)" if c % 5 == 0 else ""
+    # Текущие условия
+    if conditions:
+        cloud_labels = {
+            "clear":    "\u2600\ufe0f Ясно",
+            "mixed":    "\u26c5 Переменная облачность",
+            "overcast": "\u2601\ufe0f Пасмурно",
+            "unknown":  "Облачность неизвестна",
+        }
+        wind_deg   = conditions.get("wind_deg")
+        cloud_pct  = conditions.get("cloud_pct")
+        cloud_lbl  = cloud_labels.get(conditions.get("cloud_label", "unknown"), "")
+        cloud_pct_str = (" (" + str(round(cloud_pct)) + "%)") if cloud_pct is not None else ""
+        wind_str   = _wind_direction(wind_deg) if wind_deg is not None else "н/д"
+        bias_active = _bias_active_str(conditions.get("cloud_label", "unknown"))
+
         parts.append(
-            "\U0001f4cc *Факт вчера (" + d + "):*\n"
-            "Tmax = " + str(c) + "\u00b0C / " + _fmt(f) + "\u00b0F" + marker
+            "\U0001f321 *Текущие условия:*\n"
+            + cloud_lbl + cloud_pct_str + "\n"
+            + "Ветер: " + wind_str + "\n"
+            + bias_active
         )
 
+    # Факт вчера
+    if actual_yesterday:
+        d      = actual_yesterday["date"].strftime("%d.%m.%Y")
+        c      = actual_yesterday["tmax_c"]
+        f      = actual_yesterday["tmax_f"]
+        marker = " (Узко)" if c % 5 == 0 else ""
+        cl     = actual_yesterday.get("cloud_label", "unknown")
+        cl_ru  = {"clear": "ясно", "mixed": "переменно", "overcast": "пасмурно"}.get(cl, "")
+        cl_str = (" [" + cl_ru + "]") if cl_ru else ""
+        parts.append(
+            "\U0001f4cc *Факт вчера (" + d + "):*\n"
+            "Tmax = " + str(c) + "\u00b0C / " + _fmt(f) + "\u00b0F" + marker + cl_str
+        )
+
+    # Прогноз по дням
     for r in results:
         d = r["date"].strftime("%d.%m.%Y")
         block = [
@@ -59,12 +86,8 @@ def _format_message(results: list, actual_yesterday=None) -> str:
         sd_lbl = processor.sd_label(r["sd_f"])
         block.append("")
         block.append("SD(Tmax) = " + _fmt(r["sd_f"]) + "\u00b0F (" + sd_lbl + ")")
-        block.append(
-            "68% \u2014 " + _fmt(r["sigma1_lo"]) + "-" + _fmt(r["sigma1_hi"]) + "\u00b0F"
-        )
-        block.append(
-            "95% \u2014 " + _fmt(r["sigma2_lo"]) + "-" + _fmt(r["sigma2_hi"]) + "\u00b0F"
-        )
+        block.append("68% \u2014 " + _fmt(r["sigma1_lo"]) + "-" + _fmt(r["sigma1_hi"]) + "\u00b0F")
+        block.append("95% \u2014 " + _fmt(r["sigma2_lo"]) + "-" + _fmt(r["sigma2_hi"]) + "\u00b0F")
 
         sk_lbl = processor.skew_label(r["skew_f"])
         block.append("SKEW(Tmax) = " + _fmt(r["skew_f"]) + " (" + sk_lbl + ")")
@@ -76,6 +99,20 @@ def _format_message(results: list, actual_yesterday=None) -> str:
         parts.append("\n".join(block))
 
     return "\n\n".join(parts)
+
+
+def _wind_direction(deg: float) -> str:
+    directions = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
+    idx = round(deg / 45) % 8
+    return directions[idx] + " (" + str(round(deg)) + "\u00b0)"
+
+
+def _bias_active_str(cloud_label: str) -> str:
+    import config
+    bias = config.BIAS_CORRECTION.get(cloud_label, {})
+    if any(v != 0.0 for v in bias.values()):
+        return "Bias коррекция: \u2705 активна [" + cloud_label + "]"
+    return "Bias коррекция: \u23f3 накапливаем данные"
 
 
 def _fmt(val: float) -> str:
