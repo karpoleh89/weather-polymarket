@@ -50,3 +50,28 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "")
 
 REQUEST_TIMEOUT_SEC = 30
+
+# ── Conditional Bias Correction (°F) ─────────────────────────────────────────
+# Формат: {категория_облачности: {группа_модели: bias_в_градусах_F}}
+# Bias = среднее(Прогноз - Факт). Положительный = модель завышает.
+# Обновляй вручную каждые 7-10 дней на основе таблицы наблюдений.
+BIAS_CORRECTION = {
+    "clear": {
+        "ecmwf": 0.0,
+        "gefs":  0.0,
+        "icon":  0.0,
+        "ukmo":  0.0,
+    },
+    "mixed": {
+        "ecmwf": 0.0,
+        "gefs":  0.0,
+        "icon":  0.0,
+        "ukmo":  0.0,
+    },
+    "overcast": {
+        "ecmwf": 0.0,
+        "gefs":  0.0,
+        "icon":  0.0,
+        "ukmo":  0.0,
+    },
+}
