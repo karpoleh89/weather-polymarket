@@ -205,6 +205,35 @@ def _weighted_skew(values: np.ndarray, weights: np.ndarray,
     return float(np.average(((values - mean) / sd) ** 3, weights=weights))
 
 
+def _apply_bias_correction(tmax_raw: dict, col_to_model: dict,
+                            cloud_label: str) -> dict:
+    """
+    Вычитает Bias из сырых Tmax значений каждого члена ансамбля.
+    Bias берётся из config.BIAS_CORRECTION по категории облачности.
+    Если категория unknown — коррекция не применяется.
+    """
+    if cloud_label == "unknown":
+        return tmax_raw
+
+    bias_table = config.BIAS_CORRECTION.get(cloud_label, {})
+    if not any(v != 0.0 for v in bias_table.values()):
+        # Все нули — коррекция ещё не настроена, пропускаем
+        return tmax_raw
+
+    group_map = {model: group for group, info in config.MODEL_GROUPS.items()
+                 for model in info["models"]}
+
+    corrected = {}
+    for col, tmax_val in tmax_raw.items():
+        model = col_to_model.get(col)
+        group = group_map.get(model) if model else None
+        bias  = bias_table.get(group, 0.0)
+        corrected[col] = tmax_val - bias
+        if bias != 0.0:
+            logger.debug("Bias correction [%s/%s]: %.2f°F", cloud_label, group, bias)
+
+    return corrected
+
 def _compute_day(day_df: pd.DataFrame, target: date,
                  weights: dict, lead_hours: float) -> dict:
     daytime = day_df.between_time("06:00", "21:00")
