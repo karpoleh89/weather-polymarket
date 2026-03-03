@@ -64,8 +64,9 @@ def get_actual_tmax_yesterday() -> dict | None:
     cloud_label = "unknown"
     if cloud_s is not None:
         cloud_day = cloud_s[mask].between_time("06:00", "21:00").dropna()
-        if not cloud_day.empty:
-            mean_cloud = float(cloud_day.mean())
+       cloud_peak = cloud_s[mask].between_time("10:00", "17:00").dropna()
+        if not cloud_peak.empty:
+            mean_cloud = float(cloud_peak.mean())
             cloud_label = _cloud_category(mean_cloud)
             logger.info("Yesterday cloud cover: %.0f%% -> %s", mean_cloud, cloud_label)
 
@@ -107,8 +108,14 @@ def get_current_conditions() -> dict:
 
         if cloud_pct is not None:
             result["cloud_pct"]   = float(cloud_pct)
-            result["cloud_label"] = _cloud_category(float(cloud_pct))
-            logger.info("Cloud cover: %.0f%% -> %s", cloud_pct, result["cloud_label"])
+            # Вне пикового окна 10:00-17:00 — помечаем как mixed
+            # чтобы не применять bias по нерелевантной облачности
+            current_hour = datetime.now(timezone.utc).hour
+            if 10 <= current_hour <= 17:
+                result["cloud_label"] = _cloud_category(float(cloud_pct))
+            else:
+                result["cloud_label"] = "mixed"
+                logger.info("Outside peak hours (10-17 GMT) — using neutral 'mixed' category")
 
     except Exception as e:
         logger.warning("Could not fetch current conditions: %s", e)
