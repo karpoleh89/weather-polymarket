@@ -231,6 +231,36 @@ def _compute_day(day_df: pd.DataFrame, target: date,
     mode_f   = float(stats.mode(np.array([tmax_int[col] for col in tmax_raw]),
                                 keepdims=True).mode[0])
 
+    # Tmax по группам моделей (для Bias Collection)
+    group_tmax = {}
+    group_map = {model: group for group, info in config.MODEL_GROUPS.items()
+                 for model in info["models"]}
+    col_to_model_local = {}
+    for col in tmax_raw:
+        for model in config.ENSEMBLE_MODELS:
+            if model in col:
+                col_to_model_local[col] = model
+                break
+
+    group_vals = defaultdict(list)
+    for col, tmax_val in tmax_raw.items():
+        model = col_to_model_local.get(col)
+        if model:
+            group = group_map.get(model)
+            if group:
+                group_vals[group].append(tmax_val)
+
+    GROUP_LABELS = {
+        "ecmwf": "ECMWF",
+        "gefs":  "GFS",
+        "icon":  "ICON",
+        "ukmo":  "UKMO",
+    }
+    for group, vals in group_vals.items():
+        if vals:
+            group_tmax[GROUP_LABELS.get(group, group)] = round(float(np.mean(vals)), 1)
+
+                     
     cs = confidence_score_with_bonus(sd_f, skew_f, mean_f, mode_f)
     vd = verdict_label(sd_f, skew_f)
 
