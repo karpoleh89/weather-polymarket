@@ -46,7 +46,7 @@ ENSEMBLE_PARAMS = {
     "temperature_unit": "fahrenheit",
 }
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8694936393:AAGIpKo3B7DmTDBtEd2PxZGO0dra5NfTxoE")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "306876758")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "")
 
 REQUEST_TIMEOUT_SEC = 30
